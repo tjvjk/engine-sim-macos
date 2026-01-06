@@ -106,6 +106,16 @@ ysError ysMetalDevice::CreateRenderingContext(ysRenderingContext **renderingCont
 ysError ysMetalDevice::UpdateRenderingContext(ysRenderingContext *context) {
     YDS_ERROR_DECLARE("UpdateRenderingContext");
 
+    ysRenderTarget *target = context->GetAttachedRenderTarget();
+
+    const int width = context->GetWindow()->GetGameWidth();
+    const int height = context->GetWindow()->GetGameHeight();
+    const int pwidth = context->GetWindow()->GetPhysicalWidth();
+    const int pheight = context->GetWindow()->GetPhysicalHeight();
+
+    if (target != nullptr) {
+        YDS_NESTED_ERROR_CALL(ResizeRenderTarget(target, width, height, pwidth, pheight));
+    }
 
     return YDS_ERROR_RETURN(ysError::None);
 }
@@ -137,8 +147,8 @@ ysError ysMetalDevice::CreateOnScreenRenderTarget(ysRenderTarget **newTarget, ys
     newRenderTarget->m_posY = 0;
     newRenderTarget->m_width = context->GetWindow()->GetGameWidth();
     newRenderTarget->m_height = context->GetWindow()->GetGameHeight();
-    newRenderTarget->m_physicalWidth = context->GetWindow()->GetScreenWidth();
-    newRenderTarget->m_physicalHeight = context->GetWindow()->GetScreenHeight();
+    newRenderTarget->m_physicalWidth = context->GetWindow()->GetPhysicalWidth();
+    newRenderTarget->m_physicalHeight = context->GetWindow()->GetPhysicalHeight();
     newRenderTarget->m_format = ysRenderTarget::Format::R8G8B8A8_UNORM;
     newRenderTarget->m_hasDepthBuffer = depthBuffer;
     newRenderTarget->m_associatedContext = context;
@@ -156,7 +166,13 @@ ysError ysMetalDevice::CreateSubRenderTarget(ysRenderTarget **newTarget, ysRende
 }
 
 ysError ysMetalDevice::ResizeRenderTarget(ysRenderTarget *target, int width, int height, int pwidth, int pheight) {
-    return ysError();
+    YDS_ERROR_DECLARE("ResizeRenderTarget");
+
+    if (target == nullptr) return YDS_ERROR_RETURN(ysError::InvalidParameter);
+
+    YDS_NESTED_ERROR_CALL(ysDevice::ResizeRenderTarget(target, width, height, pwidth, pheight));
+
+    return YDS_ERROR_RETURN(ysError::None);
 }
 
 ysError ysMetalDevice::DestroyRenderTarget(ysRenderTarget *&target) {
@@ -164,7 +180,24 @@ ysError ysMetalDevice::DestroyRenderTarget(ysRenderTarget *&target) {
 }
 
 ysError ysMetalDevice::SetRenderTarget(ysRenderTarget *target) {
-    return ysError();
+    YDS_ERROR_DECLARE("SetRenderTarget");
+
+    if (target != nullptr) {
+        const int pwidth = target->GetPhysicalWidth();
+        const int pheight = target->GetPhysicalHeight();
+
+        MTL::Viewport viewport;
+        viewport.originX = target->GetPosX();
+        viewport.originY = target->GetPosY();
+        viewport.width = pwidth;
+        viewport.height = pheight;
+        viewport.znear = 0.0;
+        viewport.zfar = 1.0;
+
+        pEnc->setViewport(viewport);
+    }
+
+    return YDS_ERROR_RETURN(ysError::None);
 }
 
 ysError ysMetalDevice::SetDepthTestEnabled(ysRenderTarget *target, bool enable) {

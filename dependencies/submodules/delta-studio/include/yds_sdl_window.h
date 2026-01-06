@@ -19,6 +19,10 @@ public:
     virtual ysError InitializeWindow(ysWindow *parent, std::string title, WindowStyle style, int x, int y, int width, int height, ysMonitor *monitor) override;
     virtual void SetState(WindowState state) override;
     virtual void SetTitle(std::string title) override;
+    virtual int GetScreenWidth() const override;
+    virtual int GetScreenHeight() const override;
+    virtual int GetPhysicalWidth() const override;
+    virtual int GetPhysicalHeight() const override;
     SDL_Renderer* GetRenderer() const {return m_renderer;}
 
 protected:

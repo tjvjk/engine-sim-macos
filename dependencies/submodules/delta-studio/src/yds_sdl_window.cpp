@@ -37,7 +37,8 @@ ysError ysSdlWindow::InitializeWindow(ysWindow *parent, std::string title, Windo
     }
     SDL_SetHint(SDL_HINT_RENDER_DRIVER, "metal");
     // TODO: choose between VULKAN and OPENGL here
-    m_window = SDL_CreateWindow(title.c_str(), x, y, width, height, SDL_WINDOW_METAL | SDL_WINDOW_ALLOW_HIGHDPI);
+    flags |= SDL_WINDOW_METAL | SDL_WINDOW_ALLOW_HIGHDPI;
+    m_window = SDL_CreateWindow(title.c_str(), x, y, width, height, flags);
     m_renderer = SDL_CreateRenderer(m_window, -1, SDL_RENDERER_ACCELERATED);
 
     return YDS_ERROR_RETURN(ysError::None);
@@ -75,4 +76,28 @@ void ysSdlWindow::SetState(WindowState state) {
 
 void ysSdlWindow::SetTitle(std::string title) {
     SDL_SetWindowTitle(m_window, title.c_str());
+}
+
+int ysSdlWindow::GetScreenWidth() const {
+    int w, h;
+    SDL_GetWindowSize(m_window, &w, &h);
+    return w;
+}
+
+int ysSdlWindow::GetScreenHeight() const {
+    int w, h;
+    SDL_GetWindowSize(m_window, &w, &h);
+    return h;
+}
+
+int ysSdlWindow::GetPhysicalWidth() const {
+    int w, h;
+    SDL_GetRendererOutputSize(m_renderer, &w, &h);
+    return w;
+}
+
+int ysSdlWindow::GetPhysicalHeight() const {
+    int w, h;
+    SDL_GetRendererOutputSize(m_renderer, &w, &h);
+    return h;
 }

@@ -12,3 +12,6 @@ compile_commands.json
 *.blend1
 
 .DS_Store
+
+CLAUDE.md
+#tmp/
