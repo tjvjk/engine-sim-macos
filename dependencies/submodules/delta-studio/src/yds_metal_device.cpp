@@ -162,7 +162,28 @@ ysError ysMetalDevice::CreateOffScreenRenderTarget(ysRenderTarget **newTarget, i
 }
 
 ysError ysMetalDevice::CreateSubRenderTarget(ysRenderTarget **newTarget, ysRenderTarget *parent, int x, int y, int width, int height) {
-    return ysError();
+    YDS_ERROR_DECLARE("CreateSubRenderTarget");
+
+    if (newTarget == nullptr) return YDS_ERROR_RETURN(ysError::InvalidParameter);
+    if (parent->GetType() == ysRenderTarget::Type::Subdivision) return YDS_ERROR_RETURN(ysError::InvalidParameter);
+
+    ysMetalRenderTarget *newRenderTarget = m_renderTargets.NewGeneric<ysMetalRenderTarget>();
+
+    newRenderTarget->m_type = ysRenderTarget::Type::Subdivision;
+    newRenderTarget->m_posX = x;
+    newRenderTarget->m_posY = y;
+    newRenderTarget->m_width = width;
+    newRenderTarget->m_height = height;
+    newRenderTarget->m_physicalWidth = width;
+    newRenderTarget->m_physicalHeight = height;
+    newRenderTarget->m_format = ysRenderTarget::Format::R8G8B8A8_UNORM;
+    newRenderTarget->m_hasDepthBuffer = parent->HasDepthBuffer();
+    newRenderTarget->m_associatedContext = parent->GetAssociatedContext();
+    newRenderTarget->m_parent = parent;
+
+    *newTarget = static_cast<ysRenderTarget *>(newRenderTarget);
+
+    return YDS_ERROR_RETURN(ysError::None);
 }
 
 ysError ysMetalDevice::ResizeRenderTarget(ysRenderTarget *target, int width, int height, int pwidth, int pheight) {
@@ -179,15 +200,16 @@ ysError ysMetalDevice::DestroyRenderTarget(ysRenderTarget *&target) {
     return ysError();
 }
 
-ysError ysMetalDevice::SetRenderTarget(ysRenderTarget *target) {
+ysError ysMetalDevice::SetRenderTarget(ysRenderTarget *target, int slot) {
     YDS_ERROR_DECLARE("SetRenderTarget");
 
-    if (target != nullptr) {
+    if (target != nullptr && slot == 0) {
         const int pwidth = target->GetPhysicalWidth();
         const int pheight = target->GetPhysicalHeight();
 
         MTL::Viewport viewport;
         viewport.originX = target->GetPosX();
+        // Metal uses top-left origin, position is already in correct coordinates
         viewport.originY = target->GetPosY();
         viewport.width = pwidth;
         viewport.height = pheight;
@@ -196,6 +218,8 @@ ysError ysMetalDevice::SetRenderTarget(ysRenderTarget *target) {
 
         pEnc->setViewport(viewport);
     }
+
+    YDS_NESTED_ERROR_CALL(ysDevice::SetRenderTarget(target, slot));
 
     return YDS_ERROR_RETURN(ysError::None);
 }

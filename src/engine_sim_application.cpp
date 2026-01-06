@@ -999,17 +999,22 @@ void EngineSimApplication::renderScene() {
 
     const float cameraAspectRatio =
         m_engineView->m_bounds.width() / m_engineView->m_bounds.height();
+
+    // Calculate HiDPI scale factor (physical pixels / logical pixels)
+    const float scaleX = (float)m_engine.GetGameWindow()->GetPhysicalWidth() / m_screenWidth;
+    const float scaleY = (float)m_engine.GetGameWindow()->GetPhysicalHeight() / m_screenHeight;
+
     m_engine.GetDevice()->ResizeRenderTarget(
         m_mainRenderTarget,
         m_engineView->m_bounds.width(),
         m_engineView->m_bounds.height(),
-        m_engineView->m_bounds.width(),
-        m_engineView->m_bounds.height()
+        m_engineView->m_bounds.width() * scaleX,
+        m_engineView->m_bounds.height() * scaleY
     );
     m_engine.GetDevice()->RepositionRenderTarget(
         m_mainRenderTarget,
-        m_engineView->m_bounds.getPosition(Bounds::tl).x,
-        screenHeight - m_engineView->m_bounds.getPosition(Bounds::tl).y
+        m_engineView->m_bounds.getPosition(Bounds::tl).x * scaleX,
+        (screenHeight - m_engineView->m_bounds.getPosition(Bounds::tl).y) * scaleY
     );
     m_shaders.CalculateCamera(
         cameraAspectRatio * m_displayHeight / m_engineView->m_zoom,

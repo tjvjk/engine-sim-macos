@@ -14,4 +14,4 @@ compile_commands.json
 .DS_Store
 
 CLAUDE.md
-#tmp/
+tmp/
