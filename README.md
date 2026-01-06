@@ -5,6 +5,8 @@
 
 This version is intended for build on M1 Mac (tested on OS Version 26.2) with arm64 homebrew (in /opt/homebrew).
 
+![macOS v0.1.11a](docs/public/screenshots/macos%20v0.1.11a.png)
+
 ### Step 1 - Clone the repository
 ```git clone https://github.com/tjvjk/engine-sim-macos.git```
 
