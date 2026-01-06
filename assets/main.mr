@@ -2,12 +2,14 @@ import "engine_sim.mr"
 import "themes/default.mr"
 import "engines/chevrolet/chev_truck_454.mr"
 import "engines/zil/zil_130.mr"
+import "engines/uaz/uaz_469.mr"
 
 
 use_default_theme()
 set_engine(
     //chev_truck_454()
-    zil_130()
+    //zil_130()
+    uaz_469()
 )
-set_vehicle(zil_130_vehicle())
-set_transmission(zil_130_transmission())
+set_vehicle(uaz_469_vehicle())
+set_transmission(uaz_469_transmission())

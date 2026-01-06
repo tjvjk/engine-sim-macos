@@ -1,0 +1,398 @@
+import "engine_sim.mr"
+
+units units()
+constants constants()
+impulse_response_library ir_lib()
+
+// UAZ-469 with UMZ-451M Engine
+// Soviet off-road vehicle, produced since 1972
+// Displacement: 2445 cc (2.5L)
+// Bore: 92 mm
+// Stroke: 92 mm
+// Power: 75 hp @ 4000 rpm
+// Torque: 156 N-m @ 2500 rpm
+// Compression ratio: 6.7:1
+// Firing order: 1-2-4-3
+
+label cycle(2 * 360 * units.deg)
+
+private node wires {
+    output wire1: ignition_wire();
+    output wire2: ignition_wire();
+    output wire3: ignition_wire();
+    output wire4: ignition_wire();
+}
+
+// Firing order: 1-2-4-3 (typical for inline-4)
+public node uaz_469_distributor {
+    input wires;
+    input timing_curve;
+    input rev_limit: 4500 * units.rpm;
+    alias output __out:
+        ignition_module(timing_curve: timing_curve, rev_limit: rev_limit)
+            .connect_wire(wires.wire1, (0.0 / 4.0) * cycle)
+            .connect_wire(wires.wire2, (1.0 / 4.0) * cycle)
+            .connect_wire(wires.wire4, (2.0 / 4.0) * cycle)
+            .connect_wire(wires.wire3, (3.0 / 4.0) * cycle);
+}
+
+// Intake cam lobe profile UMZ-451M
+// Timing: intake opens 24 deg BTDC, closes 64 deg ABDC (duration ~268 deg)
+// Valve lift: 9.5 mm
+public node uaz_469_lobe_profile_int {
+    alias output __out:
+        harmonic_cam_lobe(
+            duration_at_50_thou: 220 * units.deg,
+            gamma: 1.0,
+            lift: 9.5 * units.mm,
+            steps: 100
+        );
+}
+
+// Exhaust cam lobe profile UMZ-451M
+// Timing: exhaust opens 58 deg BBDC, closes 30 deg ATDC (duration ~268 deg)
+public node uaz_469_lobe_profile_exh {
+    alias output __out:
+        harmonic_cam_lobe(
+            duration_at_50_thou: 220 * units.deg,
+            gamma: 1.0,
+            lift: 9.5 * units.mm,
+            steps: 100
+        );
+}
+
+public node uaz_469_camshaft_builder {
+    input lobe_profile: uaz_469_lobe_profile_int();
+    input ex_lobe_profile: uaz_469_lobe_profile_exh();
+    input intake_lobe_profile: lobe_profile;
+    input exhaust_lobe_profile: ex_lobe_profile;
+    input lobe_separation: 110.0 * units.deg;
+    input intake_lobe_center: lobe_separation;
+    input exhaust_lobe_center: lobe_separation;
+    input advance: 0.0 * units.deg;
+    input base_radius: 16.0 * units.mm;
+
+    output intake_cam_0: _intake_cam_0;
+    output exhaust_cam_0: _exhaust_cam_0;
+
+    camshaft_parameters params(
+        advance: advance,
+        base_radius: base_radius
+    )
+
+    camshaft _intake_cam_0(params, lobe_profile: intake_lobe_profile)
+    camshaft _exhaust_cam_0(params, lobe_profile: exhaust_lobe_profile)
+
+    label rot180(180 * units.deg)
+    label rot360(360 * units.deg)
+
+    // Firing order: 1-2-4-3
+    // Crankshaft angles for inline-4: 0, 180, 180, 0 degrees
+    _intake_cam_0
+        .add_lobe(rot360 + intake_lobe_center + 0 * rot180)   // #1
+        .add_lobe(rot360 + intake_lobe_center + 1 * rot180)   // #2
+        .add_lobe(rot360 + intake_lobe_center + 3 * rot180)   // #3
+        .add_lobe(rot360 + intake_lobe_center + 2 * rot180)   // #4
+
+    _exhaust_cam_0
+        .add_lobe(rot360 - exhaust_lobe_center + 0 * rot180)
+        .add_lobe(rot360 - exhaust_lobe_center + 1 * rot180)
+        .add_lobe(rot360 - exhaust_lobe_center + 3 * rot180)
+        .add_lobe(rot360 - exhaust_lobe_center + 2 * rot180)
+}
+
+private node add_flow_sample {
+    input lift;
+    input flow;
+    input this;
+    alias output __out: this;
+
+    this.add_sample(lift * units.mm, k_28inH2O(flow))
+}
+
+// UMZ-451 cylinder head
+// Combustion chamber volume: ~74 cc (for 6.7:1 compression)
+// Intake valve diameter: 44 mm
+// Exhaust valve diameter: 36 mm
+public node uaz_469_head {
+    input intake_camshaft;
+    input exhaust_camshaft;
+    input chamber_volume: 74.0 * units.cc;
+    input flip_display: false;
+    input flow_attenuation: 0.85;
+    input lift_scale: 1.0;
+    alias output __out: head;
+
+    function intake_flow(1 * units.mm)
+    intake_flow
+        .add_flow_sample(0 * lift_scale, 0 * flow_attenuation)
+        .add_flow_sample(1 * lift_scale, 25 * flow_attenuation)
+        .add_flow_sample(2 * lift_scale, 48 * flow_attenuation)
+        .add_flow_sample(3 * lift_scale, 70 * flow_attenuation)
+        .add_flow_sample(4 * lift_scale, 90 * flow_attenuation)
+        .add_flow_sample(5 * lift_scale, 108 * flow_attenuation)
+        .add_flow_sample(6 * lift_scale, 122 * flow_attenuation)
+        .add_flow_sample(7 * lift_scale, 135 * flow_attenuation)
+        .add_flow_sample(8 * lift_scale, 145 * flow_attenuation)
+        .add_flow_sample(9 * lift_scale, 152 * flow_attenuation)
+        .add_flow_sample(10 * lift_scale, 155 * flow_attenuation)
+
+    function exhaust_flow(1 * units.mm)
+    exhaust_flow
+        .add_flow_sample(0 * lift_scale, 0 * flow_attenuation)
+        .add_flow_sample(1 * lift_scale, 20 * flow_attenuation)
+        .add_flow_sample(2 * lift_scale, 38 * flow_attenuation)
+        .add_flow_sample(3 * lift_scale, 55 * flow_attenuation)
+        .add_flow_sample(4 * lift_scale, 70 * flow_attenuation)
+        .add_flow_sample(5 * lift_scale, 82 * flow_attenuation)
+        .add_flow_sample(6 * lift_scale, 92 * flow_attenuation)
+        .add_flow_sample(7 * lift_scale, 100 * flow_attenuation)
+        .add_flow_sample(8 * lift_scale, 106 * flow_attenuation)
+        .add_flow_sample(9 * lift_scale, 110 * flow_attenuation)
+        .add_flow_sample(10 * lift_scale, 112 * flow_attenuation)
+
+    cylinder_head head(
+        chamber_volume: chamber_volume,
+        intake_runner_volume: 80.0 * units.cc,
+        intake_runner_cross_section_area: 2 * 8.0 * units.cm2,
+        intake_port_flow: intake_flow,
+        exhaust_port_flow: exhaust_flow,
+        intake_camshaft: intake_camshaft,
+        exhaust_camshaft: exhaust_camshaft,
+        flip_display: flip_display
+    )
+}
+
+public node uaz_469 {
+    alias output __out: engine;
+
+    engine engine(
+        name: "UAZ-469 UMZ-451M",
+        starter_torque: 200 * units.lb_ft,
+        starter_speed: 500 * units.rpm,
+        redline: 4000 * units.rpm,
+        fuel: fuel(
+            max_turbulence_effect: 3.0,
+            burning_efficiency_randomness: 0.5,
+            max_burning_efficiency: 0.85
+        ),
+        throttle_gamma: 1.5
+    )
+
+    wires wires()
+
+    // UMZ-451 crankshaft
+    // Stroke: 92 mm (throw = 46 mm)
+    // Cast iron crankshaft, 5 main bearings
+    // Engine mass without transmission: 165 kg
+    crankshaft c0(
+        throw: 92 * units.mm / 2,
+        flywheel_mass: 12 * units.kg,
+        mass: 25 * units.kg,
+        friction_torque: 10.0 * units.lb_ft,
+        moment_of_inertia: 0.15,
+        position_x: 0.0,
+        position_y: 0.0,
+        tdc: 90.0 * units.deg + 45.0 * units.deg
+    )
+
+    // Rod journals for inline-4
+    // Firing order 1-2-4-3
+    rod_journal rj0(angle:   0.0 * units.deg)
+    rod_journal rj1(angle: 180.0 * units.deg)
+    rod_journal rj2(angle: 180.0 * units.deg)
+    rod_journal rj3(angle:   0.0 * units.deg)
+
+    c0
+        .add_rod_journal(rj0)
+        .add_rod_journal(rj1)
+        .add_rod_journal(rj2)
+        .add_rod_journal(rj3)
+
+    // UMZ-451 piston parameters
+    // Compression height: ~51 mm (same as GAZ-21/24)
+    // Piston mass: ~450-500 g
+    piston_parameters piston_params(
+        mass: 480 * units.g,
+        compression_height: 51.0 * units.mm,
+        wrist_pin_position: 0.0,
+        displacement: 0.0
+    )
+
+    // UMZ-451 connecting rod parameters
+    // Length: ~168 mm (center to center)
+    // Mass: ~600 g
+    connecting_rod_parameters cr_params(
+        mass: 600.0 * units.g,
+        moment_of_inertia: 0.002,
+        center_of_mass: 0.0,
+        length: 168.0 * units.mm
+    )
+
+    // Cylinder block parameters
+    // Bore: 92 mm
+    // Deck height calculated from geometry
+    cylinder_bank_parameters bank_params(
+        bore: 92 * units.mm,
+        deck_height: 168.0 * units.mm + 51.0 * units.mm + 92 * units.mm / 2
+    )
+
+    // Intake system with K-129 carburetor
+    // Idle speed: 550-650 rpm
+    intake intake(
+        plenum_volume: 1.5 * units.L,
+        plenum_cross_section_area: 30.0 * units.cm2,
+        intake_flow_rate: k_carb(250.0),
+        idle_flow_rate: k_carb(0.012),
+        idle_throttle_plate_position: 0.992,
+        throttle_gamma: 1.0
+    )
+
+    // UAZ-469 exhaust system
+    // Downpipe: ~1330 mm
+    // Resonator + muffler
+    // Total system length: ~2500-3000 mm
+    // Pipe diameter: 51 mm
+    exhaust_system_parameters es_params(
+        outlet_flow_rate: k_carb(180.0),
+        primary_tube_length: 400.0 * units.mm,
+        primary_flow_rate: k_carb(80.0),
+        velocity_decay: 0.8,
+        volume: 4.0 * units.L
+    )
+
+    label pipe_length(120.0 * units.mm)
+
+    // UAZ-469 exhaust system
+    // Long exhaust pipe typical for off-road vehicles
+    exhaust_system exhaust0(
+        es_params,
+        length: 2800.0 * units.mm,
+        audio_volume: 0.8,
+        impulse_response: ir_lib.default_0
+    )
+
+    // Inline 4-cylinder bank (0 degree angle)
+    cylinder_bank b0(bank_params, angle: 0.0 * units.deg)
+    b0
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.4)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj0,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire1,
+            primary_length: pipe_length * 4,
+            sound_attenuation: 0.9
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.4)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj1,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire2,
+            primary_length: pipe_length * 3,
+            sound_attenuation: 0.95
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.4)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj2,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire3,
+            primary_length: pipe_length * 2,
+            sound_attenuation: 1.0
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.4)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj3,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire4,
+            primary_length: pipe_length * 1,
+            sound_attenuation: 0.9
+        )
+
+    engine.add_cylinder_bank(b0)
+    engine.add_crankshaft(c0)
+
+    uaz_469_camshaft_builder camshaft()
+
+    b0.set_cylinder_head(
+        uaz_469_head(
+            intake_camshaft: camshaft.intake_cam_0,
+            exhaust_camshaft: camshaft.exhaust_cam_0,
+            flip_display: false
+        )
+    )
+
+    // Ignition timing curve
+    // Conservative setup for low compression ratio (6.7:1)
+    function timing_curve(1000 * units.rpm)
+    timing_curve
+        .add_sample(0000 * units.rpm, 4 * units.deg)
+        .add_sample(500 * units.rpm, 6 * units.deg)
+        .add_sample(1000 * units.rpm, 10 * units.deg)
+        .add_sample(1500 * units.rpm, 16 * units.deg)
+        .add_sample(2000 * units.rpm, 22 * units.deg)
+        .add_sample(2500 * units.rpm, 28 * units.deg)
+        .add_sample(3000 * units.rpm, 32 * units.deg)
+        .add_sample(3500 * units.rpm, 34 * units.deg)
+        .add_sample(4000 * units.rpm, 35 * units.deg)
+
+    engine.add_ignition_module(
+        uaz_469_distributor(
+            wires: wires,
+            timing_curve: timing_curve,
+            rev_limit: 4500 * units.rpm
+        )
+    )
+}
+
+// UAZ-469 vehicle
+// Curb weight: 1540 kg
+// Gross weight: 2280 kg
+// Tires: 8.40-15 (radius ~380 mm)
+// Final drive ratio: 5.125 (civilian axles)
+public node uaz_469_vehicle {
+    alias output __out:
+        vehicle(
+            mass: 1650 * units.kg,
+            drag_coefficient: 0.55,
+            cross_sectional_area: 1.8 * units.m * 2.0 * units.m,
+            diff_ratio: 5.125,
+            tire_radius: 380 * units.mm,
+            rolling_resistance: 800 * units.N
+        );
+}
+
+// UAZ-469 4-speed transmission (new model)
+// 1st: 3.78, 2nd: 2.60, 3rd: 1.55, 4th: 1.00
+// Transfer case: high 1.00, low 1.94
+// Final drive: 5.125
+public node uaz_469_transmission {
+    alias output __out:
+        transmission(
+            max_clutch_torque: 300 * units.lb_ft
+        )
+        .add_gear(3.78)   // 1st gear
+        .add_gear(2.60)   // 2nd gear
+        .add_gear(1.55)   // 3rd gear
+        .add_gear(1.00);  // 4th gear (direct)
+}
+
+// UAZ-469 transmission with low range transfer case
+// For off-road mode
+public node uaz_469_transmission_low {
+    alias output __out:
+        transmission(
+            max_clutch_torque: 300 * units.lb_ft
+        )
+        .add_gear(3.78 * 1.94)   // 1st low: 7.33
+        .add_gear(2.60 * 1.94)   // 2nd low: 5.04
+        .add_gear(1.55 * 1.94)   // 3rd low: 3.01
+        .add_gear(1.00 * 1.94);  // 4th low: 1.94
+}

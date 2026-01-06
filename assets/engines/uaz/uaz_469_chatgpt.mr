@@ -1,0 +1,357 @@
+import "engine_sim.mr"
+
+units units()
+constants constants()
+impulse_response_library ir_lib()
+
+// UAZ-469 with UMZ-451M Engine - TUNED VERSION
+// Based on spectral analysis recommendations for authentic sound
+//
+// Key changes from original:
+// 1. Increased crankshaft inertia and flywheel mass (more low-frequency energy)
+// 2. Reduced cam duration/lift for milder idle (less lope)
+// 3. Softer combustion parameters (slow-burn character)
+// 4. Longer exhaust with more volume (authentic UAZ exhaust)
+// 5. Increased friction for that "tired" sound
+
+label cycle(2 * 360 * units.deg)
+
+private node wires {
+    output wire1: ignition_wire();
+    output wire2: ignition_wire();
+    output wire3: ignition_wire();
+    output wire4: ignition_wire();
+}
+
+// Firing order: 1-2-4-3
+public node uaz_469_distributor {
+    input wires;
+    input timing_curve;
+    input rev_limit: 4200 * units.rpm;  // Lower rev limit - UAZ doesn't rev high
+    alias output __out:
+        ignition_module(timing_curve: timing_curve, rev_limit: rev_limit)
+            .connect_wire(wires.wire1, (0.0 / 4.0) * cycle)
+            .connect_wire(wires.wire2, (1.0 / 4.0) * cycle)
+            .connect_wire(wires.wire4, (2.0 / 4.0) * cycle)
+            .connect_wire(wires.wire3, (3.0 / 4.0) * cycle);
+}
+
+// MILD intake cam - reduced duration and lift for stable idle
+// Less valve energy = less high-frequency content
+public node uaz_469_lobe_profile_int {
+    alias output __out:
+        harmonic_cam_lobe(
+            duration_at_50_thou: 195 * units.deg,  // Reduced from 220 - milder
+            gamma: 0.8,  // Softer lobe shape
+            lift: 8.5 * units.mm,  // Reduced from 9.5 - less aggressive
+            steps: 100
+        );
+}
+
+// MILD exhaust cam
+public node uaz_469_lobe_profile_exh {
+    alias output __out:
+        harmonic_cam_lobe(
+            duration_at_50_thou: 200 * units.deg,  // Reduced from 220
+            gamma: 0.8,
+            lift: 8.5 * units.mm,  // Reduced from 9.5
+            steps: 100
+        );
+}
+
+public node uaz_469_camshaft_builder {
+    input lobe_profile: uaz_469_lobe_profile_int();
+    input ex_lobe_profile: uaz_469_lobe_profile_exh();
+    input intake_lobe_profile: lobe_profile;
+    input exhaust_lobe_profile: ex_lobe_profile;
+    input lobe_separation: 114.0 * units.deg;  // Wider separation = smoother idle
+    input intake_lobe_center: lobe_separation;
+    input exhaust_lobe_center: lobe_separation;
+    input advance: 0.0 * units.deg;
+    input base_radius: 16.0 * units.mm;
+
+    output intake_cam_0: _intake_cam_0;
+    output exhaust_cam_0: _exhaust_cam_0;
+
+    camshaft_parameters params(
+        advance: advance,
+        base_radius: base_radius
+    )
+
+    camshaft _intake_cam_0(params, lobe_profile: intake_lobe_profile)
+    camshaft _exhaust_cam_0(params, lobe_profile: exhaust_lobe_profile)
+
+    label rot180(180 * units.deg)
+    label rot360(360 * units.deg)
+
+    // Firing order: 1-2-4-3
+    _intake_cam_0
+        .add_lobe(rot360 + intake_lobe_center + 0 * rot180)
+        .add_lobe(rot360 + intake_lobe_center + 1 * rot180)
+        .add_lobe(rot360 + intake_lobe_center + 3 * rot180)
+        .add_lobe(rot360 + intake_lobe_center + 2 * rot180)
+
+    _exhaust_cam_0
+        .add_lobe(rot360 - exhaust_lobe_center + 0 * rot180)
+        .add_lobe(rot360 - exhaust_lobe_center + 1 * rot180)
+        .add_lobe(rot360 - exhaust_lobe_center + 3 * rot180)
+        .add_lobe(rot360 - exhaust_lobe_center + 2 * rot180)
+}
+
+private node add_flow_sample {
+    input lift;
+    input flow;
+    input this;
+    alias output __out: this;
+
+    this.add_sample(lift * units.mm, k_28inH2O(flow))
+}
+
+// UMZ-451 cylinder head - reduced flow for softer response
+public node uaz_469_head {
+    input intake_camshaft;
+    input exhaust_camshaft;
+    input chamber_volume: 76.0 * units.cc;  // Slightly larger for lower compression feel
+    input flip_display: false;
+    input flow_attenuation: 0.75;  // Reduced from 0.85 - less efficient ports
+    input lift_scale: 1.0;
+    alias output __out: head;
+
+    function intake_flow(1 * units.mm)
+    intake_flow
+        .add_flow_sample(0 * lift_scale, 0 * flow_attenuation)
+        .add_flow_sample(1 * lift_scale, 22 * flow_attenuation)
+        .add_flow_sample(2 * lift_scale, 42 * flow_attenuation)
+        .add_flow_sample(3 * lift_scale, 60 * flow_attenuation)
+        .add_flow_sample(4 * lift_scale, 78 * flow_attenuation)
+        .add_flow_sample(5 * lift_scale, 94 * flow_attenuation)
+        .add_flow_sample(6 * lift_scale, 106 * flow_attenuation)
+        .add_flow_sample(7 * lift_scale, 116 * flow_attenuation)
+        .add_flow_sample(8 * lift_scale, 124 * flow_attenuation)
+        .add_flow_sample(9 * lift_scale, 130 * flow_attenuation)
+        .add_flow_sample(10 * lift_scale, 134 * flow_attenuation)
+
+    function exhaust_flow(1 * units.mm)
+    exhaust_flow
+        .add_flow_sample(0 * lift_scale, 0 * flow_attenuation)
+        .add_flow_sample(1 * lift_scale, 18 * flow_attenuation)
+        .add_flow_sample(2 * lift_scale, 34 * flow_attenuation)
+        .add_flow_sample(3 * lift_scale, 48 * flow_attenuation)
+        .add_flow_sample(4 * lift_scale, 60 * flow_attenuation)
+        .add_flow_sample(5 * lift_scale, 70 * flow_attenuation)
+        .add_flow_sample(6 * lift_scale, 78 * flow_attenuation)
+        .add_flow_sample(7 * lift_scale, 84 * flow_attenuation)
+        .add_flow_sample(8 * lift_scale, 88 * flow_attenuation)
+        .add_flow_sample(9 * lift_scale, 92 * flow_attenuation)
+        .add_flow_sample(10 * lift_scale, 94 * flow_attenuation)
+
+    cylinder_head head(
+        chamber_volume: chamber_volume,
+        intake_runner_volume: 100.0 * units.cc,  // Larger runners = slower response
+        intake_runner_cross_section_area: 2 * 7.0 * units.cm2,  // Slightly smaller
+        intake_port_flow: intake_flow,
+        exhaust_port_flow: exhaust_flow,
+        intake_camshaft: intake_camshaft,
+        exhaust_camshaft: exhaust_camshaft,
+        flip_display: flip_display
+    )
+}
+
+public node uaz_469 {
+    alias output __out: engine;
+
+    engine engine(
+        name: "UAZ-469 UMZ-451M",
+        starter_torque: 250 * units.lb_ft,  // Stronger starter for heavy flywheel
+        starter_speed: 450 * units.rpm,  // Slower starter speed
+        redline: 3800 * units.rpm,  // Lower redline - authentic
+        fuel: fuel(
+            max_turbulence_effect: 2.0,  // Reduced from 3.0 - slower combustion
+            burning_efficiency_randomness: 0.2,  // Reduced from 0.5 - more stable idle
+            max_burning_efficiency: 0.80  // Reduced from 0.85 - slower burn
+        ),
+        throttle_gamma: 1.8,  // More progressive throttle
+        simulation_frequency: 7500  // Lower simulation frequency
+    )
+
+    wires wires()
+
+    // HEAVIER crankshaft - key for low-frequency dominance
+    // Increased inertia and mass for that "agricultural" thump
+    crankshaft c0(
+        throw: 92 * units.mm / 2,
+        flywheel_mass: 18 * units.kg,  // Increased from 12 - heavier flywheel
+        mass: 35 * units.kg,  // Increased from 25 - heavier crank
+        friction_torque: 15.0 * units.lb_ft,  // Increased from 10 - more friction
+        moment_of_inertia: 0.25,  // Increased from 0.15 - more rotational inertia
+        position_x: 0.0,
+        position_y: 0.0,
+        tdc: 90.0 * units.deg + 45.0 * units.deg
+    )
+
+    // Rod journals for inline-4
+    rod_journal rj0(angle:   0.0 * units.deg)
+    rod_journal rj1(angle: 180.0 * units.deg)
+    rod_journal rj2(angle: 180.0 * units.deg)
+    rod_journal rj3(angle:   0.0 * units.deg)
+
+    c0
+        .add_rod_journal(rj0)
+        .add_rod_journal(rj1)
+        .add_rod_journal(rj2)
+        .add_rod_journal(rj3)
+
+    // Heavier pistons for more low-frequency mass
+    piston_parameters piston_params(
+        mass: 550 * units.g,  // Increased from 480 - heavier pistons
+        compression_height: 51.0 * units.mm,
+        wrist_pin_position: 0.0,
+        displacement: 0.0
+    )
+
+    // Heavier connecting rods
+    connecting_rod_parameters cr_params(
+        mass: 700.0 * units.g,  // Increased from 600 - heavier rods
+        moment_of_inertia: 0.0025,  // Increased from 0.002
+        center_of_mass: 0.0,
+        length: 168.0 * units.mm
+    )
+
+    cylinder_bank_parameters bank_params(
+        bore: 92 * units.mm,
+        deck_height: 168.0 * units.mm + 51.0 * units.mm + 92 * units.mm / 2
+    )
+
+    // Intake with smaller carburetor feel
+    intake intake(
+        plenum_volume: 2.0 * units.L,  // Larger plenum = softer response
+        plenum_cross_section_area: 25.0 * units.cm2,  // Reduced
+        intake_flow_rate: k_carb(220.0),  // Reduced from 250 - smaller carb
+        idle_flow_rate: k_carb(0.022),  // Tuned for ~700 RPM idle
+        idle_throttle_plate_position: 0.989,  // Slightly open at idle
+        throttle_gamma: 1.2
+    )
+
+    // LONGER exhaust system - key for UAZ sound
+    // Long, thin steel, poorly damped, slightly rattly
+    exhaust_system_parameters es_params(
+        outlet_flow_rate: k_carb(150.0),  // Reduced - more restrictive
+        primary_tube_length: 500.0 * units.mm,  // Longer primaries
+        primary_flow_rate: k_carb(65.0),  // Reduced - more restrictive
+        velocity_decay: 0.6,  // More decay = warmer sound
+        volume: 12.0 * units.L  // Larger volume - bigger resonance
+    )
+
+    // Longer primary pipe lengths for more exhaust interaction
+    label pipe_length(180.0 * units.mm)  // Increased from 120
+
+    // Very long UAZ exhaust - 3+ meters total
+    exhaust_system exhaust0(
+        es_params,
+        length: 3500.0 * units.mm,  // Increased from 2800 - even longer
+        audio_volume: 0.9,  // Slightly louder
+        impulse_response: ir_lib.default_0
+    )
+
+    cylinder_bank b0(bank_params, angle: 0.0 * units.deg)
+    b0
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.6)),  // More blowby
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj0,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire1,
+            primary_length: pipe_length * 4,
+            sound_attenuation: 0.85
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.6)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj1,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire2,
+            primary_length: pipe_length * 3,
+            sound_attenuation: 0.90
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.6)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj2,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire3,
+            primary_length: pipe_length * 2,
+            sound_attenuation: 0.95
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.6)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj3,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire4,
+            primary_length: pipe_length * 1,
+            sound_attenuation: 0.85
+        )
+
+    engine.add_cylinder_bank(b0)
+    engine.add_crankshaft(c0)
+
+    uaz_469_camshaft_builder camshaft()
+
+    b0.set_cylinder_head(
+        uaz_469_head(
+            intake_camshaft: camshaft.intake_cam_0,
+            exhaust_camshaft: camshaft.exhaust_cam_0,
+            flip_display: false
+        )
+    )
+
+    // More conservative timing - slower combustion
+    function timing_curve(1000 * units.rpm)
+    timing_curve
+        .add_sample(0000 * units.rpm, 2 * units.deg)   // Less advance at idle
+        .add_sample(500 * units.rpm, 4 * units.deg)
+        .add_sample(1000 * units.rpm, 8 * units.deg)
+        .add_sample(1500 * units.rpm, 14 * units.deg)
+        .add_sample(2000 * units.rpm, 20 * units.deg)
+        .add_sample(2500 * units.rpm, 25 * units.deg)
+        .add_sample(3000 * units.rpm, 28 * units.deg)
+        .add_sample(3500 * units.rpm, 30 * units.deg)
+        .add_sample(4000 * units.rpm, 31 * units.deg)
+
+    engine.add_ignition_module(
+        uaz_469_distributor(
+            wires: wires,
+            timing_curve: timing_curve,
+            rev_limit: 4200 * units.rpm
+        )
+    )
+}
+
+// UAZ-469 vehicle - same as original
+public node uaz_469_vehicle {
+    alias output __out:
+        vehicle(
+            mass: 1650 * units.kg,
+            drag_coefficient: 0.55,
+            cross_sectional_area: 1.8 * units.m * 2.0 * units.m,
+            diff_ratio: 5.125,
+            tire_radius: 380 * units.mm,
+            rolling_resistance: 800 * units.N
+        );
+}
+
+// UAZ-469 4-speed transmission
+public node uaz_469_transmission {
+    alias output __out:
+        transmission(
+            max_clutch_torque: 300 * units.lb_ft
+        )
+        .add_gear(3.78)
+        .add_gear(2.60)
+        .add_gear(1.55)
+        .add_gear(1.00);
+}
