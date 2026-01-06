@@ -475,7 +475,7 @@ public node ferrari_412_t2_v12 {
     engine.add_ignition_module(ignition_module)
 }
 
-private node f1_vehicle {
+public node f1_vehicle {
     alias output __out:
         vehicle(
             mass: 798 * units.kg,
@@ -487,7 +487,7 @@ private node f1_vehicle {
         );
 }
 
-private node f1_transmission {
+public node f1_transmission {
     alias output __out:
         transmission(
             max_clutch_torque: 1000 * units.lb_ft

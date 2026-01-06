@@ -141,7 +141,7 @@ public node honda_trx520 {
         ))
 }
 
-private node honda_trx520_transmission {
+public node honda_trx520_transmission {
     alias output __out: transmission;
 
     transmission transmission(
@@ -155,7 +155,7 @@ private node honda_trx520_transmission {
     transmission.add_gear(2.0)
 }
 
-private node honda_trx520_vehicle {
+public node honda_trx520_vehicle {
     alias output __out:
         vehicle(
             mass: 500 * units.kg,
