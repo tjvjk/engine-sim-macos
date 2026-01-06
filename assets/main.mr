@@ -1,9 +1,7 @@
 import "engine_sim.mr"
 import "themes/default.mr"
-import "engines/lada/vaz_21214.mr"
+import "engines/chevrolet/chev_truck_454.mr"
 
 
 use_default_theme()
-set_engine(vaz_21214())
-set_vehicle(lada_niva_vehicle())
-set_transmission(lada_niva_transmission())
+set_engine(chev_truck_454())
