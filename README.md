@@ -3,10 +3,10 @@
 
 ## Notes about this particular fork
 
-This version is intended for build on M1 Mac (tested on OS Ventura 13) with arm64 homebrew (in /opt/homebrew).
+This version is intended for build on M1 Mac (tested on OS Version 26.2) with arm64 homebrew (in /opt/homebrew).
 
 ### Step 1 - Clone the repository
-```git clone https://github.com/boxofbox/engine-sim-m1```
+```git clone https://github.com/tjvjk/engine-sim-macos.git```
 
 ### Step 2 - Install Dependencies
 
@@ -26,7 +26,7 @@ From the root directory of the project, run the following commands:
 ```
 mkdir build
 cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
+cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..
 cmake --build . --target engine-sim-app
 ```
 
@@ -41,10 +41,10 @@ https://github.com/phire/delta-studio/tree/clang_linux
 
 https://github.com/bobsayshilol/engine-sim/tree/gcc-fixes
 
+https://github.com/boxofbox/engine-sim-APPLE_ARM
+
 ## Current Bugs in Metal Version
 - Engine view is huge.
-- Engine view isn't drawn 100% correctly (Valves, cam lobes, etc look weird)
-- App may be so big that it goes off the edge of the screen.
 
 ## **Warning: project is in development and will change frequently**
 ---
