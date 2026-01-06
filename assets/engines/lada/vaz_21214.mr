@@ -1,0 +1,405 @@
+import "engine_sim.mr"
+
+// LADA Niva 4x4 - VAZ-21214 Engine
+// Inline-4, OHC, 8 valve, fuel injected
+// Displacement: 1690 cc (1.7L)
+// Bore: 82 mm, Stroke: 80 mm
+// Compression ratio: 9.3:1
+// Power: 83 hp (61 kW) @ 5000 rpm
+// Torque: 127.5 N-m @ 4000 rpm
+// Firing order: 1-3-4-2
+
+units units()
+constants constants()
+impulse_response_library ir_lib()
+label cycle(2 * 360 * units.deg)
+
+private node wires {
+    output wire1: ignition_wire();
+    output wire2: ignition_wire();
+    output wire3: ignition_wire();
+    output wire4: ignition_wire();
+}
+
+// Ignition module with firing order 1-3-4-2
+public node vaz_21214_distributor {
+    input wires;
+    input timing_curve;
+    input rev_limit: 6000 * units.rpm;
+    alias output __out:
+        ignition_module(timing_curve: timing_curve, rev_limit: rev_limit)
+            .connect_wire(wires.wire1, (0.0 / 4.0) * cycle)
+            .connect_wire(wires.wire3, (1.0 / 4.0) * cycle)
+            .connect_wire(wires.wire4, (2.0 / 4.0) * cycle)
+            .connect_wire(wires.wire2, (3.0 / 4.0) * cycle);
+}
+
+// Intake cam lobe profile for VAZ-21214
+// Based on 21213/21214 camshaft specs
+// Intake valve lift: ~9.5 mm (with rocker arm ratio ~1.5)
+// Duration at 50 thou: ~200 degrees
+public node vaz_21214_lobe_profile_int {
+    alias output __out:
+        harmonic_cam_lobe(
+            duration_at_50_thou: 200 * units.deg,
+            gamma: 1.0,
+            lift: 9.5 * units.mm,
+            steps: 100
+        );
+}
+
+// Exhaust cam lobe profile for VAZ-21214
+// Exhaust valve lift: ~9.0 mm
+public node vaz_21214_lobe_profile_exh {
+    alias output __out:
+        harmonic_cam_lobe(
+            duration_at_50_thou: 195 * units.deg,
+            gamma: 1.0,
+            lift: 9.0 * units.mm,
+            steps: 100
+        );
+}
+
+// Camshaft builder for inline-4 engine
+// Firing order: 1-3-4-2
+public node vaz_21214_camshaft_builder {
+    input lobe_profile: vaz_21214_lobe_profile_int();
+    input ex_lobe_profile: vaz_21214_lobe_profile_exh();
+    input intake_lobe_profile: lobe_profile;
+    input exhaust_lobe_profile: ex_lobe_profile;
+    input lobe_separation: 110.0 * units.deg;
+    input intake_lobe_center: lobe_separation;
+    input exhaust_lobe_center: lobe_separation;
+    input advance: 0.0 * units.deg;
+    input base_radius: 16.0 * units.mm;
+
+    output intake_cam_0: _intake_cam_0;
+    output exhaust_cam_0: _exhaust_cam_0;
+
+    camshaft_parameters params(
+        advance: advance,
+        base_radius: base_radius
+    )
+
+    camshaft _intake_cam_0(params, lobe_profile: intake_lobe_profile)
+    camshaft _exhaust_cam_0(params, lobe_profile: exhaust_lobe_profile)
+
+    label rot180(180 * units.deg)
+    label rot360(360 * units.deg)
+
+    // Firing order: 1-3-4-2
+    // Crankshaft angles: cyl1=0, cyl2=180, cyl3=180, cyl4=0
+    // Intake lobe order follows firing order
+    _intake_cam_0
+        .add_lobe(rot360 + intake_lobe_center + 0 * rot180)   // #1 fires at 0
+        .add_lobe(rot360 + intake_lobe_center + 3 * rot180)   // #2 fires at 540 (3rd)
+        .add_lobe(rot360 + intake_lobe_center + 1 * rot180)   // #3 fires at 180 (1st)
+        .add_lobe(rot360 + intake_lobe_center + 2 * rot180)   // #4 fires at 360 (2nd)
+
+    _exhaust_cam_0
+        .add_lobe(rot360 - exhaust_lobe_center + 0 * rot180)
+        .add_lobe(rot360 - exhaust_lobe_center + 3 * rot180)
+        .add_lobe(rot360 - exhaust_lobe_center + 1 * rot180)
+        .add_lobe(rot360 - exhaust_lobe_center + 2 * rot180)
+}
+
+// VAZ-21214 cylinder head
+// Combustion chamber volume: ~52 cc (for 9.3:1 compression)
+// Intake valve diameter: 37 mm
+// Exhaust valve diameter: 31 mm
+// Equipped with hydraulic lifters
+public node vaz_21214_head {
+    input intake_camshaft;
+    input exhaust_camshaft;
+    input chamber_volume: 52.0 * units.cc;
+    input flip_display: false;
+    input flow_attenuation: 1.3;
+    input lift_scale: 1.0;
+    alias output __out: head;
+
+    // Flow curves based on typical OHC 8-valve head
+    // Values in CFM at given lift (mm)
+    function intake_flow(1 * units.mm)
+    intake_flow
+        .add_flow_sample(0 * lift_scale, 0 * flow_attenuation)
+        .add_flow_sample(1 * lift_scale, 22 * flow_attenuation)
+        .add_flow_sample(2 * lift_scale, 42 * flow_attenuation)
+        .add_flow_sample(3 * lift_scale, 60 * flow_attenuation)
+        .add_flow_sample(4 * lift_scale, 76 * flow_attenuation)
+        .add_flow_sample(5 * lift_scale, 90 * flow_attenuation)
+        .add_flow_sample(6 * lift_scale, 102 * flow_attenuation)
+        .add_flow_sample(7 * lift_scale, 112 * flow_attenuation)
+        .add_flow_sample(8 * lift_scale, 120 * flow_attenuation)
+        .add_flow_sample(9 * lift_scale, 126 * flow_attenuation)
+        .add_flow_sample(10 * lift_scale, 130 * flow_attenuation)
+
+    function exhaust_flow(1 * units.mm)
+    exhaust_flow
+        .add_flow_sample(0 * lift_scale, 0 * flow_attenuation)
+        .add_flow_sample(1 * lift_scale, 18 * flow_attenuation)
+        .add_flow_sample(2 * lift_scale, 34 * flow_attenuation)
+        .add_flow_sample(3 * lift_scale, 48 * flow_attenuation)
+        .add_flow_sample(4 * lift_scale, 60 * flow_attenuation)
+        .add_flow_sample(5 * lift_scale, 70 * flow_attenuation)
+        .add_flow_sample(6 * lift_scale, 78 * flow_attenuation)
+        .add_flow_sample(7 * lift_scale, 85 * flow_attenuation)
+        .add_flow_sample(8 * lift_scale, 90 * flow_attenuation)
+        .add_flow_sample(9 * lift_scale, 94 * flow_attenuation)
+        .add_flow_sample(10 * lift_scale, 96 * flow_attenuation)
+
+    cylinder_head head(
+        chamber_volume: chamber_volume,
+        intake_runner_volume: 90.0 * units.cc,
+        intake_runner_cross_section_area: 2 * 8.0 * units.cm2,
+        intake_port_flow: intake_flow,
+        exhaust_port_flow: exhaust_flow,
+        intake_camshaft: intake_camshaft,
+        exhaust_camshaft: exhaust_camshaft,
+        flip_display: flip_display
+    )
+}
+
+public node vaz_21214 {
+    alias output __out: engine;
+
+    engine engine(
+        name: "LADA Niva 4x4 VAZ-21214",
+        starter_torque: 200 * units.lb_ft,
+        starter_speed: 400 * units.rpm,
+        redline: 5500 * units.rpm,
+        fuel: fuel(
+            max_turbulence_effect: 3.0,
+            burning_efficiency_randomness: 0.3,
+            max_burning_efficiency: 0.9
+        ),
+        throttle_gamma: 1.5
+    )
+
+    wires wires()
+
+    // VAZ-21214 crankshaft specifications
+    // Bore: 82 mm, Stroke: 80 mm
+    // Crankshaft from 21213 with 40 mm crank radius
+    label bore(82 * units.mm)
+    label stroke(80 * units.mm)
+    label rod_length(136 * units.mm)
+    label compression_height(38 * units.mm)
+
+    crankshaft c0(
+        throw: stroke / 2,
+        flywheel_mass: 9.5 * units.kg,
+        mass: 11 * units.kg,
+        friction_torque: 2.0 * units.lb_ft,
+        moment_of_inertia: 0.08,
+        position_x: 0.0,
+        position_y: 0.0,
+        tdc: 90.0 * units.deg + 45.0 * units.deg
+    )
+
+    // Rod journals for inline-4
+    // Firing order 1-3-4-2
+    rod_journal rj0(angle:   0.0 * units.deg)
+    rod_journal rj1(angle: 180.0 * units.deg)
+    rod_journal rj2(angle: 180.0 * units.deg)
+    rod_journal rj3(angle:   0.0 * units.deg)
+
+    c0
+        .add_rod_journal(rj0)
+        .add_rod_journal(rj1)
+        .add_rod_journal(rj2)
+        .add_rod_journal(rj3)
+
+    // VAZ-21214 piston parameters
+    // Piston mass: ~350-380 g
+    piston_parameters piston_params(
+        mass: 365 * units.g,
+        compression_height: compression_height,
+        wrist_pin_position: 0.0,
+        displacement: 0.0
+    )
+
+    // VAZ connecting rod parameters
+    // Length: 136 mm (center to center)
+    // Mass: ~450 g
+    connecting_rod_parameters cr_params(
+        mass: 450.0 * units.g,
+        moment_of_inertia: 0.0015,
+        center_of_mass: 0.0,
+        length: rod_length
+    )
+
+    // Cylinder block parameters
+    cylinder_bank_parameters bank_params(
+        bore: bore,
+        deck_height: rod_length + compression_height + stroke / 2
+    )
+
+    // Intake system with multipoint fuel injection
+    // Throttle body: 46 mm diameter
+    // Idle speed: 820-880 rpm
+    intake intake(
+        plenum_volume: 1.5 * units.L,
+        plenum_cross_section_area: 30.0 * units.cm2,
+        intake_flow_rate: k_carb(220.0),
+        idle_flow_rate: k_carb(0.012),
+        idle_throttle_plate_position: 0.9935,
+        throttle_gamma: 1.0
+    )
+
+    // LADA Niva exhaust system
+    // 4-2-1 exhaust manifold
+    // Primary tube diameter: 42 mm
+    // Catalytic converter equipped
+    exhaust_system_parameters es_params(
+        outlet_flow_rate: k_carb(160.0),
+        primary_tube_length: 350.0 * units.mm,
+        primary_flow_rate: k_carb(70.0),
+        velocity_decay: 0.8,
+        volume: 3.5 * units.L
+    )
+
+    label pipe_length(100.0 * units.mm)
+
+    exhaust_system exhaust0(
+        es_params,
+        length: 2200.0 * units.mm,
+        audio_volume: 0.7,
+        impulse_response: ir_lib.default_0
+    )
+
+    // Inline 4-cylinder bank (0 degree angle)
+    cylinder_bank b0(bank_params, angle: 0.0 * units.deg)
+    b0
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.002)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj0,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire1,
+            primary_length: pipe_length * 4,
+            sound_attenuation: 0.9
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.002)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj1,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire2,
+            primary_length: pipe_length * 3,
+            sound_attenuation: 0.95
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.002)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj2,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire3,
+            primary_length: pipe_length * 2,
+            sound_attenuation: 1.0
+        )
+        .add_cylinder(
+            piston: piston(piston_params, blowby: k_28inH2O(0.002)),
+            connecting_rod: connecting_rod(cr_params),
+            rod_journal: rj3,
+            intake: intake,
+            exhaust_system: exhaust0,
+            ignition_wire: wires.wire4,
+            primary_length: pipe_length * 1,
+            sound_attenuation: 0.9
+        )
+
+    engine.add_cylinder_bank(b0)
+    engine.add_crankshaft(c0)
+
+    vaz_21214_camshaft_builder camshaft()
+
+    b0.set_cylinder_head(
+        vaz_21214_head(
+            intake_camshaft: camshaft.intake_cam_0,
+            exhaust_camshaft: camshaft.exhaust_cam_0,
+            flip_display: false
+        )
+    )
+
+    // Ignition timing curve for fuel injected engine
+    // Electronic ignition with JANUARY 7.2 or BOSCH MP 7.9.7 ECU
+    // Higher compression (9.3:1) allows more aggressive timing
+    function timing_curve(1000 * units.rpm)
+    timing_curve
+        .add_sample(0000 * units.rpm, 18 * units.deg)
+        .add_sample(500 * units.rpm, 20 * units.deg)
+        .add_sample(1000 * units.rpm, 22 * units.deg)
+        .add_sample(1500 * units.rpm, 18 * units.deg)
+        .add_sample(2000 * units.rpm, 24 * units.deg)
+        .add_sample(2500 * units.rpm, 28 * units.deg)
+        .add_sample(3000 * units.rpm, 32 * units.deg)
+        .add_sample(3500 * units.rpm, 34 * units.deg)
+        .add_sample(4000 * units.rpm, 36 * units.deg)
+        .add_sample(4500 * units.rpm, 37 * units.deg)
+        .add_sample(5000 * units.rpm, 38 * units.deg)
+        .add_sample(5500 * units.rpm, 38 * units.deg)
+
+    engine.add_ignition_module(
+        vaz_21214_distributor(
+            wires: wires,
+            timing_curve: timing_curve,
+            rev_limit: 6000 * units.rpm
+        )
+    )
+}
+
+// LADA Niva 4x4 vehicle
+// Curb weight: 1285 kg
+// Gross weight: 1610 kg
+// Tires: 185/75 R16 (radius ~330 mm)
+// Final drive ratio: 3.9
+public node lada_niva_vehicle {
+    alias output __out:
+        vehicle(
+            mass: 1350 * units.kg,
+            drag_coefficient: 0.50,
+            cross_sectional_area: 1.64 * units.m * 1.74 * units.m,
+            diff_ratio: 3.9,
+            tire_radius: 330 * units.mm,
+            rolling_resistance: 600 * units.N
+        );
+}
+
+// LADA Niva 5-speed transmission
+// VAZ-21214 uses 5-speed gearbox (VAZ-21213/21074)
+// 1st: 3.67, 2nd: 2.10, 3rd: 1.36, 4th: 1.00, 5th: 0.82
+// Transfer case: high 1.20, low 2.135
+public node lada_niva_transmission {
+    alias output __out:
+        transmission(
+            max_clutch_torque: 250 * units.lb_ft
+        )
+        .add_gear(3.67)   // 1st gear
+        .add_gear(2.10)   // 2nd gear
+        .add_gear(1.36)   // 3rd gear
+        .add_gear(1.00)   // 4th gear (direct)
+        .add_gear(0.82);  // 5th gear (overdrive)
+}
+
+// LADA Niva transmission with low range transfer case
+// For off-road mode
+public node lada_niva_transmission_low {
+    alias output __out:
+        transmission(
+            max_clutch_torque: 250 * units.lb_ft
+        )
+        .add_gear(3.67 * 2.135)   // 1st low: 7.84
+        .add_gear(2.10 * 2.135)   // 2nd low: 4.48
+        .add_gear(1.36 * 2.135)   // 3rd low: 2.90
+        .add_gear(1.00 * 2.135)   // 4th low: 2.14
+        .add_gear(0.82 * 2.135);  // 5th low: 1.75
+}
+
+public node main {
+    set_engine(vaz_21214())
+    set_vehicle(lada_niva_vehicle())
+    set_transmission(lada_niva_transmission())
+}
